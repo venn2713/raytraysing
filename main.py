@@ -1,11 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
 import numpy as np
-from PIL import Image, ImageTk  # For displaying images in tkinter
-from OpenGL.GL import *
-from OpenGL.GLUT import *
-from OpenGL.GLU import *
-import OpenGL.GL.shaders as shaders
+from PIL import Image, ImageTk
 
 
 def normalize(vector):
@@ -146,7 +142,7 @@ class ObjectEditor:
                 self.parent.objects.append(self.obj)
                 self.parent.update_menu()
             self.editor.destroy()
-        except ValueError as e:
+        except ValueError:
             messagebox.showerror("Неверный ввод", f"Пожалуйста, введите корректные значения")
 
     def cancel(self):
@@ -164,10 +160,20 @@ class RayTracerApp(tk.Tk):
         super().__init__()
         self.title('Ray Tracer')
 
-        # Define these before calling create_widgets
+        # Задайте желаемые размеры окна
         self.width = 800
         self.height = 600
-        self.geometry(f'{self.width}x{self.height}')
+
+        # Получите размеры экрана
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+
+        # Вычислите координаты x и y для размещения окна по центру экрана
+        x = (screen_width // 2) - (self.width // 2)
+        y = (screen_height // 2) - (self.height // 2)
+
+        # Установите геометрию окна с учетом вычисленных координат
+        self.geometry(f'{self.width}x{self.height}+{x}+{y}')
         self.max_depth = 3
         self.camera = np.array([0, 0, 1])
         self.ratio = float(self.width) / self.height
@@ -212,9 +218,22 @@ class RayTracerApp(tk.Tk):
             'зерк. свет': np.array([1, 1, 1])
         }
 
-        self.create_widgets()
-        self.create_menu()
-    def create_menu(self):
+        # Создание фреймов для упорядочивания элементов интерфейса
+        control_frame = tk.Frame(self)
+        control_frame.pack(side=tk.BOTTOM, fill=tk.X)
+
+        progress_frame = tk.Frame(control_frame)
+        progress_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        self.progress = ttk.Progressbar(progress_frame, orient=tk.HORIZONTAL, length=100, mode='determinate')
+        self.progress.pack(side=tk.LEFT, padx=5, pady=5, fill=tk.X, expand=True)
+
+        self.render_btn = tk.Button(control_frame, text='Рендер', command=self.render_scene)
+        self.render_btn.pack(side=tk.RIGHT, padx=5, pady=5)
+
+        self.canvas = tk.Canvas(self, width=self.width, height=self.height, bg='black')
+        self.canvas.pack(expand=True, fill=tk.BOTH)
+
         self.menu_bar = tk.Menu(self)  # Создание главного меню
 
         # Создание выпадающего меню для объектов
@@ -238,23 +257,6 @@ class RayTracerApp(tk.Tk):
             self.objects_menu.add_command(label=obj['имя'], command=lambda x=obj: self.object_menu(x))
         self.objects_menu.add_separator()
         self.objects_menu.add_command(label="Добавить...", command=self.add_new_object)
-
-    def create_widgets(self):
-        # Создание фреймов для упорядочивания элементов интерфейса
-        control_frame = tk.Frame(self)
-        control_frame.pack(side=tk.BOTTOM, fill=tk.X)
-
-        progress_frame = tk.Frame(control_frame)
-        progress_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-        self.progress = ttk.Progressbar(progress_frame, orient=tk.HORIZONTAL, length=100, mode='determinate')
-        self.progress.pack(side=tk.LEFT, padx=5, pady=5, fill=tk.X, expand=True)
-
-        self.render_btn = tk.Button(control_frame, text='Render', command=self.render_scene)
-        self.render_btn.pack(side=tk.RIGHT, padx=5, pady=5)
-
-        self.canvas = tk.Canvas(self, width=self.width, height=self.height, bg='black')
-        self.canvas.pack(expand=True, fill=tk.BOTH)
 
     def render_scene(self):
         self.progress['value'] = 0  # Обнуляем прогресс перед началом рендеринга
@@ -283,13 +285,15 @@ class RayTracerApp(tk.Tk):
                         break
                     illumination = np.zeros(3)
                     illumination += nearest_object['фон. свет'] * self.light['фон. свет']
-                    illumination += nearest_object['расс. свет'] * self.light['расс. свет'] * np.dot(intersection_to_light,
-                                                                                               normal_to_surface)
+                    illumination += (nearest_object['расс. свет'] *
+                                     self.light['расс. свет'] *
+                                     np.dot(intersection_to_light, normal_to_surface))
                     intersection_to_camera = normalize(self.camera - intersection)
-                    H = normalize(intersection_to_light + intersection_to_camera)
-                    illumination += nearest_object['зерк. свет'] * self.light['зерк. свет'] * np.dot(normal_to_surface,
-                                                                                                 H) ** (
-                                                nearest_object['блеск'] / 4)
+                    illumination += (nearest_object['зерк. свет'] *
+                                     self.light['зерк. свет'] *
+                                     np.dot(normal_to_surface,
+                                            normalize(intersection_to_light + intersection_to_camera)) **
+                                     (nearest_object['блеск'] / 4))
                     color += reflection * illumination
                     reflection *= nearest_object['отражение']
                     origin = shifted_point
